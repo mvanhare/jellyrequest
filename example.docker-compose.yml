@@ -3,7 +3,7 @@ version: '3.8'
 services:
   jellyrequest-bot:
     build: https://github.com/mvanhare/jellyrequest/jellyrequest-bot.git#main
-    container_name: jellyrequest-bot-compose
+    container_name: jellyrequest
     restart: unless-stopped
     env_file:
       - .env
