@@ -1,31 +1,9 @@
-version: '3.8'
-
 services:
-  jellyrequest-bot:
-    build: https://github.com/mvanhare/jellyrequest.git#main
+  jellyrequest:
+    build: https://github.com/mvanhare/jellyrequest.git
     container_name: jellyrequest
     restart: unless-stopped
     env_file:
       - .env
     volumes:
       - ./data:/app/data
-    # If you want to ensure the bot waits for network or other services,
-    # you might add depends_on, but for a standalone bot, it's often not needed.
-
-# Optional: Define a named volume if you prefer it over host-mounted
-# volumes:
-#   jellyrequest_data:
-
-# And then in services.jellyrequest-bot.volumes:
-# - jellyrequest_data:/app/data
-
-# Using ./data:/app/data (host-mounted) is often simpler for direct access to the db.
-# The .env file should be in the same directory as this docker-compose.yml file
-# and should contain variables like:
-# DISCORD_BOT_TOKEN=your_discord_bot_token_here
-# JELLYSEERR_URL=https://your.jellyseerr.url
-# JELLYSEERR_API_KEY=your_jellyseerr_api_key_here
-# JELLYFIN_URL=https://your.jellyfin.url
-# JELLYFIN_API_KEY=your_jellyfin_api_key_here
-#
-# TZ=America/New_York # Optional: Set timezone for logs if needed
