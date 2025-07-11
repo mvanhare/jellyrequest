@@ -20,6 +20,9 @@ Using Docker Compose is the recommended way to run JellyRequest. It simplifies t
 -   Access to a Jellyseerr instance (URL and API Key).
 -   Access to a Jellyfin instance (URL and API Key).
 
+### Some assumptions
+-   Your Jellyfin and Jellyseerr usernames are the same.
+
 ### 1. Create `docker-compose.yml`
 
 Create a file named `docker-compose.yml` in a directory of your choice with the following content:
