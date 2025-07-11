@@ -9,9 +9,9 @@ A Discord bot for interacting with Jellyseerr and Jellyfin.
 -   Link Discord user to Jellyseerr/Jellyfin user.
 -   View current requests and their status.
 
-## Running with Docker
+## Running with Docker (Manual `docker run`)
 
-This application is designed to be run with Docker.
+This application is designed to be run with Docker. If you prefer manual control with `docker run` commands, follow these instructions. For a simpler setup, see the "Running with Docker Compose" section below.
 
 ### Prerequisites
 
@@ -81,6 +81,75 @@ To use the volume mount effectively for the database:
      This creates a Docker named volume `jellyrequest_bot_db` where the database will be stored. It's managed by Docker.
 
 Choose the option that best suits your persistence strategy. Option 1 is often preferred for easier direct access to the database file on the host.
+
+## Running with Docker Compose (Recommended)
+
+Using Docker Compose simplifies the management of the bot's container and its configuration.
+
+### 1. Create an `.env` file
+
+In the same directory as the `docker-compose.yml` file, create a file named `.env`. This file will store your configuration variables.
+
+**`.env` file template:**
+
+```env
+# Discord Bot Configuration
+DISCORD_BOT_TOKEN=YOUR_DISCORD_BOT_TOKEN_HERE
+
+# Jellyseerr Configuration
+JELLYSEERR_URL=https://requests.example.com
+JELLYSEERR_API_KEY=YOUR_JELLYSEERR_API_KEY_HERE
+
+# Jellyfin Configuration
+JELLYFIN_URL=https://media.example.com
+JELLYFIN_API_KEY=YOUR_JELLYFIN_API_KEY_HERE
+
+# Optional: Timezone for container logs (e.g., America/New_York, Europe/London)
+# TZ=America/New_York
+```
+
+Replace the placeholder values with your actual credentials and URLs.
+
+### 2. Create a `data` directory (if it doesn't exist)
+
+The `docker-compose.yml` is configured to map a local `./data` directory to `/app/data` inside the container. This is where the `linked_users.db` file will be stored.
+
+```bash
+mkdir data
+```
+*(Skip if this directory already exists from previous Docker setups).*
+
+### 3. Start the Bot with Docker Compose
+
+Navigate to the directory containing the `docker-compose.yml` and `.env` files, then run:
+
+```bash
+docker-compose up -d
+```
+
+This command will:
+- Build the Docker image if it hasn't been built already (based on the `Dockerfile`).
+- Create and start the container in detached mode (`-d`).
+- Load environment variables from your `.env` file.
+- Mount the `./data` directory for database persistence.
+- Automatically restart the bot if it crashes (due to `restart: unless-stopped`).
+
+### 4. Viewing Logs
+
+To view the bot's logs when using Docker Compose:
+
+```bash
+docker-compose logs -f
+```
+
+### 5. Stopping the Bot
+
+To stop the bot:
+
+```bash
+docker-compose down
+```
+This will stop and remove the container. The `data` directory (and the database within) will remain on your host.
 
 ## Development
 
