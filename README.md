@@ -9,147 +9,125 @@ A Discord bot for interacting with Jellyseerr and Jellyfin.
 -   Link Discord user to Jellyseerr/Jellyfin user.
 -   View current requests and their status.
 
-## Running with Docker (Manual `docker run`)
+## Running with Docker Compose (Recommended)
 
-This application is designed to be run with Docker. If you prefer manual control with `docker run` commands, follow these instructions. For a simpler setup, see the "Running with Docker Compose" section below.
+Using Docker Compose is the recommended way to run JellyRequest. It simplifies the management of the bot's container and its configuration.
 
 ### Prerequisites
 
--   Docker installed and running.
+-   Docker and Docker Compose installed and running.
 -   A Discord Bot Token.
 -   Access to a Jellyseerr instance (URL and API Key).
--   Access to a Jellyfin instance (URL and API Key, optional for some features but recommended).
+-   Access to a Jellyfin instance (URL and API Key).
 
-### 1. Build the Docker Image
+### 1. Create `docker-compose.yml`
 
-Navigate to the directory containing the `Dockerfile` and run:
+Create a file named `docker-compose.yml` in a directory of your choice with the following content:
 
-```bash
-docker build -t jellyrequest-bot .
+```yaml
+services:
+  jellyrequest:
+    build: https://github.com/mvanhare/jellyrequest.git
+    container_name: jellyrequest
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
 ```
 
-### 2. Run the Docker Container
+### 2. Create an `.env` file
 
-You need to provide several environment variables when running the container. You also need to mount a volume to persist the `linked_users.db` SQLite database.
+In the same directory as your `docker-compose.yml` file, create a file named `.env`. This file will store your configuration variables.
 
-**Environment Variables:**
-
-*   `DISCORD_BOT_TOKEN`: Your Discord bot token. **(Required)**
-*   `JELLYSEERR_URL`: The URL for your Jellyseerr instance (e.g., `https://requests.example.com`). **(Required)**
-*   `JELLYSEERR_API_KEY`: Your Jellyseerr API key. **(Required)**
-*   `JELLYFIN_URL`: The URL for your Jellyfin instance (e.g., `https://media.example.com`). **(Required, or ensure default in code is suitable if not linking to Jellyfin)**
-*   `JELLYFIN_API_KEY`: Your Jellyfin API key. **(Required, or ensure default in code is suitable if not linking to Jellyfin)**
-
-**Example `docker run` command:**
-
-Replace the placeholder values with your actual configuration.
-
-```bash
-docker run -d \
-  --name jellyrequest-bot-container \
-  -e DISCORD_BOT_TOKEN="YOUR_DISCORD_BOT_TOKEN" \
-  -e JELLYSEERR_URL="YOUR_JELLYSEERR_URL" \
-  -e JELLYSEERR_API_KEY="YOUR_JELLYSEERR_API_KEY" \
-  -e JELLYFIN_URL="YOUR_JELLYFIN_URL" \
-  -e JELLYFIN_API_KEY="YOUR_JELLYFIN_API_KEY" \
-  -v $(pwd)/data:/app/data \
-  jellyrequest-bot
-```
-
-**Explanation of Volume Mounting:**
-
-*   `-v $(pwd)/data:/app/data`: This command creates a directory named `data` in your current working directory on the host machine (`$(pwd)/data`) and maps it to the `/app/data` directory inside the container.
-*   The application will store its `linked_users.db` file in `/app/linked_users.db`. To ensure this database is persisted in the `data` directory you just mounted, you should modify `utils.py` to place the database in `/app/data/linked_users.db`.
-
-**Important Note on Database Path:**
-The current `utils.py` initializes the database as `sqlite3.connect("linked_users.db")`, which means it will be created in the working directory (`/app` inside the container).
-
-To use the volume mount effectively for the database:
-**Option 1 (Recommended for easy host access):** Modify `utils.py` to save the database in a subdirectory that you mount.
-   - Change `sqlite3.connect("linked_users.db")` to `sqlite3.connect("data/linked_users.db")` in `utils.py`.
-   - Then use the volume mount: `-v $(pwd)/data:/app/data` (as shown in the example). The database will then appear in `./data/linked_users.db` on your host.
-
-**Option 2 (Simpler Docker command, database inside named volume):** Use a named volume for the entire `/app` directory or specifically for the database file if you don't change the path in `utils.py`.
-   - If `utils.py` remains unchanged (db in `/app/linked_users.db`):
-     ```bash
-     docker run -d \
-       --name jellyrequest-bot-container \
-       # ... your environment variables ...
-       -v jellyrequest_bot_db:/app/linked_users.db \
-       jellyrequest-bot
-     ```
-     This creates a Docker named volume `jellyrequest_bot_db` where the database will be stored. It's managed by Docker.
-
-Choose the option that best suits your persistence strategy. Option 1 is often preferred for easier direct access to the database file on the host.
-
-## Running with Docker Compose (Recommended)
-
-Using Docker Compose simplifies the management of the bot's container and its configuration.
-
-### 1. Create an `.env` file
-
-In the same directory as the `docker-compose.yml` file, create a file named `.env`. This file will store your configuration variables.
-
-**`.env` file template:**
+**Example `.env` file:**
 
 ```env
 # Discord Bot Configuration
-DISCORD_BOT_TOKEN=YOUR_DISCORD_BOT_TOKEN_HERE
-
+DISCORD_BOT_TOKEN=DISCORD_BOT_TOKEN
 # Jellyseerr Configuration
-JELLYSEERR_URL=https://requests.example.com
-JELLYSEERR_API_KEY=YOUR_JELLYSEERR_API_KEY_HERE
+JELLYSEERR_URL=JELLYSEERR_URL
+JELLYSEERR_API_KEY=JELLYSEERR_API_KEY
 
 # Jellyfin Configuration
-JELLYFIN_URL=https://media.example.com
-JELLYFIN_API_KEY=YOUR_JELLYFIN_API_KEY_HERE
+JELLYFIN_URL=JELLYFIN_URL
+JELLYFIN_API_KEY=JELLYFIN_API_KEY
 
 # Optional: Timezone for container logs (e.g., America/New_York, Europe/London)
-# TZ=America/New_York
+TZ=America/New_York
 ```
 
-Replace the placeholder values with your actual credentials and URLs.
+Replace the placeholder values (e.g., `DISCORD_BOT_TOKEN`, `JELLYSEERR_URL`) with your actual credentials and URLs.
 
-### 2. Create a `data` directory (if it doesn't exist)
+### 3. Obtaining API Keys and URLs
 
-The `docker-compose.yml` is configured to map a local `./data` directory to `/app/data` inside the container. This is where the `linked_users.db` file will be stored.
+*   **Discord Bot Token (`DISCORD_BOT_TOKEN`)**:
+    1.  Go to the [Discord Developer Portal](https://discord.com/developers/applications).
+    2.  Click "New Application" and give your bot a name.
+    3.  Navigate to the "Bot" tab.
+    4.  Click "Add Bot" and confirm.
+    5.  Under the "Token" section, click "Copy" to get your bot token.
+        *   **Important**: You will also need to enable "Message Content Intent" under "Privileged Gateway Intents" on this page for the bot to read messages.
+    6.  To invite your bot to a server, go to the "OAuth2" -> "URL Generator" tab. Select the `bot` scope and then choose the necessary permissions (e.g., `Send Messages`, `Read Message History`, `Embed Links`). Copy the generated URL and open it in your browser to add the bot to your server.
+
+*   **Jellyseerr URL (`JELLYSEERR_URL`)**:
+    *   This is the main URL you use to access your Jellyseerr instance (e.g., `http://localhost:5055` or `https://requests.yourdomain.com`).
+
+*   **Jellyseerr API Key (`JELLYSEERR_API_KEY`)**:
+    1.  Open your Jellyseerr instance.
+    2.  Go to Settings -> General.
+    3.  The API Key is listed there. Copy it.
+
+*   **Jellyfin URL (`JELLYFIN_URL`)**:
+    *   This is the main URL you use to access your Jellyfin instance (e.g., `http://localhost:8096` or `https://media.yourdomain.com`).
+
+*   **Jellyfin API Key (`JELLYFIN_API_KEY`)**:
+    1.  Open your Jellyfin instance.
+    2.  Go to Dashboard -> API Keys (under the Advanced section in the sidebar).
+    3.  Click the "+" button to generate a new API key.
+    4.  Give it an optional name (e.g., "JellyRequest Bot") and click Save.
+    5.  Copy the generated API key.
+
+### 4. Create a `data` directory
+
+The `docker-compose.yml` is configured to map a local `./data` directory to `/app/data` inside the container. This is where the `linked_users.db` file will be stored to persist user links.
 
 ```bash
 mkdir data
 ```
-*(Skip if this directory already exists from previous Docker setups).*
 
-### 3. Start the Bot with Docker Compose
+### 5. Build and Start the Bot
 
-Navigate to the directory containing the `docker-compose.yml` and `.env` files, then run:
+Navigate to the directory containing your `docker-compose.yml` and `.env` files, then run:
 
 ```bash
-docker-compose up -d
+docker-compose up -d --build
 ```
 
 This command will:
-- Build the Docker image if it hasn't been built already (based on the `Dockerfile`).
+- Pull the latest code from the GitHub repository specified in `build`.
+- Build the Docker image.
 - Create and start the container in detached mode (`-d`).
 - Load environment variables from your `.env` file.
 - Mount the `./data` directory for database persistence.
 - Automatically restart the bot if it crashes (due to `restart: unless-stopped`).
 
-### 4. Viewing Logs
+### 6. Viewing Logs
 
-To view the bot's logs when using Docker Compose:
+To view the bot's logs:
 
 ```bash
-docker-compose logs -f
+docker-compose logs -f jellyrequest
 ```
 
-### 5. Stopping the Bot
+### 7. Stopping the Bot
 
-To stop the bot:
+To stop and remove the bot's container:
 
 ```bash
 docker-compose down
 ```
-This will stop and remove the container. The `data` directory (and the database within) will remain on your host.
+The `data` directory (and the `linked_users.db` within) will remain on your host.
 
 ## Development
 
