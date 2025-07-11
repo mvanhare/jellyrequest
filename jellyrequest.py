@@ -31,24 +31,43 @@ class JellyBot(commands.Bot):
 
     async def setup_hook(self):
         print("Running setup_hook...")
-        # Load cogs
+        # Manually load all cogs
+        # Ensure 'importlib' is imported if not already
+        import importlib 
         cogs_path = "cogs"
-        for filename in os.listdir(cogs_path):
-            if filename.endswith(".py") and not filename.startswith("__"):
-                cog_name = f"{cogs_path}.{filename[:-3]}"
-                try:
-                    await self.load_extension(cog_name)
-                    print(f"Successfully loaded cog: {cog_name}")
-                except Exception as e:
-                    print(f"Failed to load cog {cog_name}: {e}")
-                    # Optionally, re-raise or handle more gracefully depending on severity
-                    # raise
+        
+        cog_files = [f[:-3] for f in os.listdir(cogs_path) if f.endswith(".py") and not f.startswith("__")]
 
-        # Optional: Sync application commands globally or for specific guilds
-        # await self.tree.sync() # Sync globally
-        # print("Application commands synced.")
-
-
+        for cog_module_name in cog_files:
+            full_module_path = f"{cogs_path}.{cog_module_name}"
+            try:
+                print(f"Attempting to manually load module: {full_module_path}")
+                # Import the module
+                module = importlib.import_module(full_module_path)
+                print(f"Successfully imported module: {full_module_path}")
+                
+                # Call the setup function if it exists
+                if hasattr(module, 'setup'):
+                    await module.setup(self)
+                    print(f"Successfully setup and loaded cog: {full_module_path}")
+                else:
+                    print(f"No setup function found in {full_module_path}")
+            except Exception as e:
+                print(f"Failed to manually load cog {full_module_path}: {e}")
+                # Optionally, re-raise or handle more gracefully depending on severity
+                # raise
+        
+        # Sync application commands globally
+        print("Attempting to sync application commands...")
+        try:
+            await self.tree.sync() # Sync globally
+            # To sync to a specific guild for faster updates during testing:
+            # GUILD_ID = 123456789012345678 # Replace with your actual guild ID
+            # await self.tree.sync(guild=discord.Object(id=GUILD_ID))
+            print("Application commands synced successfully.")
+        except Exception as e:
+            print(f"Error syncing application commands: {e}")
+        
 # --- Bot Instantiation ---
 intents = discord.Intents.default()
 # You might need to enable message content intent if you plan to use prefix commands for non-slash interactions

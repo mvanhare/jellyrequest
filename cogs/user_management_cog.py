@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from discord import app_commands # Added for slash commands
 import requests
 import re
 import secrets
@@ -18,10 +19,10 @@ class UserManagementCog(commands.Cog):
         self.jellyfin_url = jellyfin_url
         self.jellyfin_headers = jellyfin_headers
 
-    @commands.slash_command(name="invite", description="Adds a user to Jellyseerr and Jellyfin.")
-    @commands.has_permissions(administrator=True)
-    async def invite_cmd(self, ctx: discord.ApplicationContext, user: discord.Member):
-        await ctx.defer(ephemeral=True)
+    @app_commands.command(name="invite", description="Adds a user to Jellyseerr and Jellyfin.")
+    @app_commands.checks.has_permissions(administrator=True) # Corrected decorator
+    async def invite_cmd(self, interaction: discord.Interaction, user: discord.Member):
+        await interaction.response.defer(ephemeral=True)
         username = re.sub(r"[^a-zA-Z0-9.-]", "", user.name) # Sanitize username
         temp_password = secrets.token_urlsafe(12)
 
@@ -38,18 +39,18 @@ class UserManagementCog(commands.Cog):
             response_fin = requests.post(jellyfin_new_user_url, headers=self.jellyfin_headers, json=jellyfin_user_payload, timeout=10)
 
             if response_fin.status_code == 400 and "User with the same name already exists" in response_fin.text:
-                 await ctx.followup.send(f"⚠️ User '{username}' already exists in Jellyfin. Cannot proceed.", ephemeral=True)
+                 await interaction.followup.send(f"⚠️ User '{username}' already exists in Jellyfin. Cannot proceed.", ephemeral=True)
                  return
             response_fin.raise_for_status()
             jellyfin_user_id = response_fin.json().get("Id")
             if not jellyfin_user_id:
-                await ctx.followup.send("❌ Failed to get user ID from Jellyfin response after creation.", ephemeral=True)
+                await interaction.followup.send("❌ Failed to get user ID from Jellyfin response after creation.", ephemeral=True)
                 return
         except requests.exceptions.RequestException as e:
             err_msg = f"❌ Failed to create Jellyfin user: {e}"
             if e.response is not None:
                 err_msg += f" - {e.response.text}"
-            await ctx.followup.send(err_msg, ephemeral=True)
+            await interaction.followup.send(err_msg, ephemeral=True)
             return
 
         # Step 2: Import User to Jellyseerr
@@ -63,17 +64,17 @@ class UserManagementCog(commands.Cog):
             response_seerr_import.raise_for_status()
             created_users = response_seerr_import.json()
             if not created_users or not isinstance(created_users, list) or len(created_users) == 0:
-                await ctx.followup.send("❌ User created in Jellyfin but import to Jellyseerr returned unexpected data.", ephemeral=True)
+                await interaction.followup.send("❌ User created in Jellyfin but import to Jellyseerr returned unexpected data.", ephemeral=True)
                 return
             jellyseerr_user = created_users[0]
             if not jellyseerr_user or not jellyseerr_user.get("id"):
-                 await ctx.followup.send("❌ User created in Jellyfin but import to Jellyseerr failed to provide a user ID.", ephemeral=True)
+                 await interaction.followup.send("❌ User created in Jellyfin but import to Jellyseerr failed to provide a user ID.", ephemeral=True)
                  return
         except requests.exceptions.RequestException as e:
             err_msg = f"❌ Failed to import Jellyfin user to Jellyseerr: {e}"
             if e.response is not None:
                 err_msg += f" - {e.response.text}"
-            await ctx.followup.send(err_msg, ephemeral=True)
+            await interaction.followup.send(err_msg, ephemeral=True)
             # Potentially roll back Jellyfin user creation or notify admin
             return
 
@@ -98,17 +99,17 @@ class UserManagementCog(commands.Cog):
             )
             await user.send(dm_message)
         except discord.Forbidden:
-            await ctx.followup.send(f"✅ Accounts created for {username}, but I could not DM them. Please send their password manually: `{temp_password}`", ephemeral=True)
+            await interaction.followup.send(f"✅ Accounts created for {username}, but I could not DM them. Please send their password manually: `{temp_password}`", ephemeral=True)
             return
         except Exception as e: # Catch other potential errors during DM
-            await ctx.followup.send(f"✅ Accounts created for {username}, but failed to DM them. Password: `{temp_password}`. Error: {e}", ephemeral=True)
+            await interaction.followup.send(f"✅ Accounts created for {username}, but failed to DM them. Password: `{temp_password}`. Error: {e}", ephemeral=True)
             return
 
-        await ctx.followup.send(f"✅ Successfully created accounts for `{username}` and sent them a DM with credentials.", ephemeral=True)
+        await interaction.followup.send(f"✅ Successfully created accounts for `{username}` and sent them a DM with credentials.", ephemeral=True)
 
-    @commands.slash_command(name="link", description="Link your Discord account to your Jellyfin/Jellyseerr user")
-    async def link_cmd(self, ctx: discord.ApplicationContext, jellyfin_username: str, password: str):
-        await ctx.defer(ephemeral=True)
+    @app_commands.command(name="link", description="Link your Discord account to your Jellyfin/Jellyseerr user")
+    async def link_cmd(self, interaction: discord.Interaction, jellyfin_username: str, password: str):
+        await interaction.response.defer(ephemeral=True)
 
         # Step 1: Authenticate with Jellyfin
         jellyfin_user_id = None
@@ -120,16 +121,16 @@ class UserManagementCog(commands.Cog):
             auth_response = requests.post(jellyfin_auth_url, json=auth_payload, headers=self.jellyfin_headers, timeout=10)
 
             if auth_response.status_code == 401:
-                await ctx.followup.send("❌ **Authentication Failed:** Invalid Jellyfin username or password.", ephemeral=True)
+                await interaction.followup.send("❌ **Authentication Failed:** Invalid Jellyfin username or password.", ephemeral=True)
                 return
             auth_response.raise_for_status()
             jellyfin_user_data = auth_response.json()
             jellyfin_user_id = jellyfin_user_data.get("User", {}).get("Id")
             if not jellyfin_user_id:
-                await ctx.followup.send("❌ **Error:** Could not retrieve Jellyfin User ID after authentication.", ephemeral=True)
+                await interaction.followup.send("❌ **Error:** Could not retrieve Jellyfin User ID after authentication.", ephemeral=True)
                 return
         except requests.exceptions.RequestException as e:
-            await ctx.followup.send(f"❌ An error occurred while trying to authenticate with Jellyfin: {e}", ephemeral=True)
+            await interaction.followup.send(f"❌ An error occurred while trying to authenticate with Jellyfin: {e}", ephemeral=True)
             return
 
         # Step 2: Find the corresponding Jellyseerr user by Jellyfin User ID
@@ -144,7 +145,7 @@ class UserManagementCog(commands.Cog):
             found_seerr_user = next((u for u in seerr_users if str(u.get("jellyfinUserId")) == str(jellyfin_user_id)), None)
 
             if not found_seerr_user:
-                await ctx.followup.send(
+                await interaction.followup.send(
                     f"⚠️ **Account Not Found in Jellyseerr.** Although your Jellyfin login is correct, "
                     f"your account ('{jellyfin_username}') has not been imported or linked in Jellyseerr. Please contact an administrator.",
                     ephemeral=True
@@ -154,35 +155,35 @@ class UserManagementCog(commands.Cog):
             jellyseerr_username = found_seerr_user.get("username") or found_seerr_user.get("jellyfinUsername") or jellyfin_username
 
         except requests.exceptions.RequestException as e:
-            await ctx.followup.send(f"❌ Failed to fetch users from Jellyseerr: {e}", ephemeral=True)
+            await interaction.followup.send(f"❌ Failed to fetch users from Jellyseerr: {e}", ephemeral=True)
             return
 
         if not jellyseerr_user_id_for_link:
-             await ctx.followup.send(f"❌ Could not determine Jellyseerr user ID for linking. Please contact an administrator.", ephemeral=True)
+             await interaction.followup.send(f"❌ Could not determine Jellyseerr user ID for linking. Please contact an administrator.", ephemeral=True)
              return
 
         # Step 3: Store the linked user in the database
         store_linked_user(
-            discord_id=str(ctx.author.id),
+            discord_id=str(interaction.user.id), # Corrected: use interaction.user.id
             jellyseerr_user_id=str(jellyseerr_user_id_for_link),
             jellyfin_user_id=str(jellyfin_user_id), # Storing this too for completeness
             username=jellyseerr_username # Store the Jellyseerr username
         )
-        await ctx.followup.send(f"✅ **Success!** Your Discord account is now linked to the Jellyfin/Jellyseerr user '{jellyseerr_username}'.", ephemeral=True)
+        await interaction.followup.send(f"✅ **Success!** Your Discord account is now linked to the Jellyfin/Jellyseerr user '{jellyseerr_username}'.", ephemeral=True)
 
-    @commands.slash_command(name="unlink", description="Unlink your Discord account from Jellyseerr/Jellyfin")
-    async def unlink_cmd(self, ctx: discord.ApplicationContext):
-        await ctx.defer(ephemeral=True)
-        linked_user = get_linked_user(str(ctx.author.id))
+    @app_commands.command(name="unlink", description="Unlink your Discord account from Jellyseerr/Jellyfin")
+    async def unlink_cmd(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        linked_user = get_linked_user(str(interaction.user.id)) # Corrected: use interaction.user.id
         if not linked_user:
-            await ctx.followup.send("⚠️ You haven't linked your account yet.", ephemeral=True)
+            await interaction.followup.send("⚠️ You haven't linked your account yet.", ephemeral=True)
             return
 
-        delete_linked_user(str(ctx.author.id))
-        await ctx.followup.send("✅ Unlinked your Discord account successfully.", ephemeral=True)
+        delete_linked_user(str(interaction.user.id)) # Corrected: use interaction.user.id
+        await interaction.followup.send("✅ Unlinked your Discord account successfully.", ephemeral=True)
 
 
-def setup(bot):
+async def setup(bot):
     jellyseerr_url = getattr(bot, 'JELLYSEERR_URL', None)
     jellyseerr_api_key = getattr(bot, 'JELLYSEERR_API_KEY', None)
     jellyfin_url = getattr(bot, 'JELLYFIN_URL', None)
@@ -194,4 +195,4 @@ def setup(bot):
     jellyseerr_headers = {"X-Api-Key": jellyseerr_api_key, "Content-Type": "application/json"}
     jellyfin_headers = {"X-Emby-Token": jellyfin_api_key, "Content-Type": "application/json"}
 
-    bot.add_cog(UserManagementCog(bot, jellyseerr_url, jellyseerr_headers, jellyfin_url, jellyfin_headers))
+    await bot.add_cog(UserManagementCog(bot, jellyseerr_url, jellyseerr_headers, jellyfin_url, jellyfin_headers))

@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from discord import app_commands # Added for slash commands
 from urllib.parse import urlencode, quote
 import requests
 
@@ -19,10 +20,10 @@ class MediaCommandsCog(commands.Cog):
         self.jellyseerr_url = jellyseerr_url
         self.jellyseerr_headers = jellyseerr_headers
 
-    @commands.slash_command(name="request", description="Search for a movie or TV show")
-    async def request_cmd(self, ctx: discord.ApplicationContext, query: str):
+    @app_commands.command(name="request", description="Search for a movie or TV show")
+    async def request_cmd(self, interaction: discord.Interaction, query: str):
         """Searches for media on Jellyseerr and displays results with pagination."""
-        await ctx.defer()
+        await interaction.response.defer()
 
         search_url_path = "/api/v1/search"
         full_search_url = f"{self.jellyseerr_url}{search_url_path}"
@@ -37,25 +38,25 @@ class MediaCommandsCog(commands.Cog):
             # print(f"Search results for '{query}': {results}") # Debugging line
 
             if not results:
-                await ctx.followup.send("No results found for your query.")
+                await interaction.followup.send("No results found for your query.")
                 return
 
             # Pass JELLYSEERR_URL and headers to the PaginationView
             view = PaginationView(results, self.jellyseerr_url, self.jellyseerr_headers)
             initial_embed = create_embed_for_item(results[0], 0, len(results))
 
-            await ctx.followup.send(embed=initial_embed, view=view)
+            await interaction.followup.send(embed=initial_embed, view=view)
 
         except requests.exceptions.RequestException as e:
-            await ctx.followup.send(f"An error occurred while searching: {e}")
+            await interaction.followup.send(f"An error occurred while searching: {e}")
         except Exception as e: # Catch any other unexpected errors
-            await ctx.followup.send(f"An unexpected error occurred: {e}")
+            await interaction.followup.send(f"An unexpected error occurred: {e}")
 
 
-    @commands.slash_command(name="discover", description="Discover new movies or TV shows")
-    async def discover_cmd(self, ctx: discord.ApplicationContext):
+    @app_commands.command(name="discover", description="Discover new movies or TV shows")
+    async def discover_cmd(self, interaction: discord.Interaction):
         """Discovers new movies or TV shows from Jellyseerr."""
-        await ctx.defer()
+        await interaction.response.defer()
         try:
             # Define API paths
             movies_discover_path = "/api/v1/discover/movies"
@@ -73,7 +74,7 @@ class MediaCommandsCog(commands.Cog):
 
             popular_items = movies + tv_shows
             if not popular_items:
-                await ctx.followup.send("No popular items found to discover.")
+                await interaction.followup.send("No popular items found to discover.")
                 return
 
             # Shuffle popular_items to provide variety if desired, or sort them
@@ -82,14 +83,14 @@ class MediaCommandsCog(commands.Cog):
             # Pass JELLYSEERR_URL and headers to the PaginationView
             view = PaginationView(popular_items, self.jellyseerr_url, self.jellyseerr_headers)
             initial_embed = create_embed_for_item(popular_items[0], 0, len(popular_items))
-            await ctx.followup.send(embed=initial_embed, view=view)
+            await interaction.followup.send(embed=initial_embed, view=view)
 
         except requests.exceptions.RequestException as e:
-            await ctx.followup.send(f"An error occurred while fetching popular items: {e}")
+            await interaction.followup.send(f"An error occurred while fetching popular items: {e}")
         except Exception as e: # Catch any other unexpected errors
-            await ctx.followup.send(f"An unexpected error occurred during discovery: {e}")
+            await interaction.followup.send(f"An unexpected error occurred during discovery: {e}")
 
-def setup(bot):
+async def setup(bot):
     # This function is called by discord.py when loading the cog
     # We need to pass the JELLYSEERR_URL and JELLYSEERR_API_KEY (or headers) from the bot's config
     # This assumes the main bot instance will have these attributes or a config dictionary
@@ -103,4 +104,4 @@ def setup(bot):
         "X-Api-Key": jellyseerr_api_key,
         "Content-Type": "application/json"
     }
-    bot.add_cog(MediaCommandsCog(bot, jellyseerr_url, jellyseerr_headers))
+    await bot.add_cog(MediaCommandsCog(bot, jellyseerr_url, jellyseerr_headers))

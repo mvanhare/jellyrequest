@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from discord import app_commands # Added for slash commands
 import requests
 
 # Adjust import path for utils
@@ -21,18 +22,18 @@ class UtilityCog(commands.Cog):
         print(f"Logged in as {self.bot.user.name} (from UtilityCog)")
         print("Bot is ready to receive commands (from UtilityCog).")
 
-    @commands.slash_command(name="watch", description="Get your watch statistics from Jellyfin")
-    async def watch_stats_cmd(self, ctx: discord.ApplicationContext):
-        await ctx.defer(ephemeral=True) # Ephemeral for privacy
+    @app_commands.command(name="watch", description="Get your watch statistics from Jellyfin")
+    async def watch_stats_cmd(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True) # Ephemeral for privacy
 
-        linked_user = get_linked_user(str(ctx.author.id))
+        linked_user = get_linked_user(str(interaction.user.id)) # Corrected: use interaction.user.id
         if not linked_user:
-            await ctx.followup.send("⚠️ You haven't linked your account yet. Use `/link` to get started.", ephemeral=True)
+            await interaction.followup.send("⚠️ You haven't linked your account yet. Use `/link` to get started.", ephemeral=True)
             return
 
         _, jellyfin_user_id, username = linked_user # Unpack: jellyseerr_id, jellyfin_id, username
-        if not jellyfin_user_id:
-            await ctx.followup.send("⚠️ Your Jellyfin User ID is not found in the link. Please try linking again or contact an admin.", ephemeral=True)
+        if not jellyfin_user_id: # This check might be redundant if get_linked_user ensures jellyfin_user_id exists
+            await interaction.followup.send("⚠️ Your Jellyfin User ID is not found in the link. Please try linking again or contact an admin.", ephemeral=True)
             return
 
         # Query Jellyfin watch data
@@ -47,10 +48,10 @@ class UtilityCog(commands.Cog):
             response.raise_for_status()
             items = response.json().get("Items", [])
         except requests.exceptions.RequestException as e:
-            await ctx.followup.send(f"❌ Failed to fetch watch data from Jellyfin: {e}", ephemeral=True)
+            await interaction.followup.send(f"❌ Failed to fetch watch data from Jellyfin: {e}", ephemeral=True)
             return
         except Exception as e: # Catch any other unexpected errors
-            await ctx.followup.send(f"❌ An unexpected error occurred while fetching watch data: {e}", ephemeral=True)
+            await interaction.followup.send(f"❌ An unexpected error occurred while fetching watch data: {e}", ephemeral=True)
             return
 
 
@@ -77,7 +78,7 @@ class UtilityCog(commands.Cog):
                 )
 
         embed = discord.Embed(
-            title=f"📊 {ctx.author.display_name}'s Watch Statistics",
+            title=f"📊 {interaction.user.display_name}'s Watch Statistics", # Corrected: use interaction.user.display_name
             color=discord.Color.blue()
         )
         embed.add_field(name="📺 Total Watched Items", value=str(watched_count), inline=False)
@@ -91,15 +92,15 @@ class UtilityCog(commands.Cog):
         else:
             embed.add_field(name="👀 Last Watched", value="No specific last watched item found.", inline=False)
 
-        await ctx.followup.send(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
-    @commands.slash_command(name="requests", description="View the status of your media requests")
-    async def my_requests_cmd(self, ctx: discord.ApplicationContext):
-        await ctx.defer(ephemeral=True)
+    @app_commands.command(name="requests", description="View the status of your media requests")
+    async def my_requests_cmd(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
 
-        linked_user = get_linked_user(str(ctx.author.id))
+        linked_user = get_linked_user(str(interaction.user.id)) # Corrected: use interaction.user.id
         if not linked_user or not linked_user[0]: # Check for linked user and jellyseerr_id
-            await ctx.followup.send("⚠️ You need to link your account first using `/link`.", ephemeral=True)
+            await interaction.followup.send("⚠️ You need to link your account first using `/link`.", ephemeral=True)
             return
 
         jellyseerr_user_id = linked_user[0]
@@ -114,14 +115,14 @@ class UtilityCog(commands.Cog):
             user_requests_data = response.json().get("results", [])
 
         except requests.exceptions.RequestException as e:
-            await ctx.followup.send(f"❌ An error occurred while fetching your requests: {e}", ephemeral=True)
+            await interaction.followup.send(f"❌ An error occurred while fetching your requests: {e}", ephemeral=True)
             return
         except Exception as e: # Catch any other unexpected errors
-            await ctx.followup.send(f"❌ An unexpected error occurred: {e}", ephemeral=True)
+            await interaction.followup.send(f"❌ An unexpected error occurred: {e}", ephemeral=True)
             return
 
         if not user_requests_data:
-            await ctx.followup.send("You have no pending or completed requests.", ephemeral=True)
+            await interaction.followup.send("You have no pending or completed requests.", ephemeral=True)
             return
 
         user_requests_data.sort(key=lambda r: r.get('createdAt', ''), reverse=True)
@@ -133,9 +134,9 @@ class UtilityCog(commands.Cog):
             self.jellyseerr_url, self.jellyseerr_headers # Pass URL and headers
         )
 
-        await ctx.followup.send(embed=initial_embed, view=view, ephemeral=True)
+        await interaction.followup.send(embed=initial_embed, view=view, ephemeral=True)
 
-def setup(bot):
+async def setup(bot):
     jellyfin_url = getattr(bot, 'JELLYFIN_URL', None)
     jellyfin_api_key = getattr(bot, 'JELLYFIN_API_KEY', None)
     jellyseerr_url = getattr(bot, 'JELLYSEERR_URL', None)
@@ -147,4 +148,4 @@ def setup(bot):
     jellyfin_headers = {"X-Emby-Token": jellyfin_api_key, "Content-Type": "application/json"}
     jellyseerr_headers = {"X-Api-Key": jellyseerr_api_key, "Content-Type": "application/json"}
 
-    bot.add_cog(UtilityCog(bot, jellyfin_url, jellyfin_headers, jellyseerr_url, jellyseerr_headers))
+    await bot.add_cog(UtilityCog(bot, jellyfin_url, jellyfin_headers, jellyseerr_url, jellyseerr_headers))
