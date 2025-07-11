@@ -3,7 +3,7 @@ from discord.ext import commands
 from discord import app_commands # Added for slash commands
 import requests
 
-# Adjust import path for utils
+# Ensure utils.py can be imported from the parent directory.
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -26,13 +26,13 @@ class UtilityCog(commands.Cog):
     async def watch_stats_cmd(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True) # Ephemeral for privacy
 
-        linked_user = get_linked_user(str(interaction.user.id)) # Corrected: use interaction.user.id
+        linked_user = get_linked_user(str(interaction.user.id))
         if not linked_user:
             await interaction.followup.send("⚠️ You haven't linked your account yet. Use `/link` to get started.", ephemeral=True)
             return
 
         _, jellyfin_user_id, username = linked_user # Unpack: jellyseerr_id, jellyfin_id, username
-        if not jellyfin_user_id: # This check might be redundant if get_linked_user ensures jellyfin_user_id exists
+        if not jellyfin_user_id:
             await interaction.followup.send("⚠️ Your Jellyfin User ID is not found in the link. Please try linking again or contact an admin.", ephemeral=True)
             return
 
@@ -59,14 +59,14 @@ class UtilityCog(commands.Cog):
         total_ticks = sum(item.get("RunTimeTicks", 0) for item in items if item.get("RunTimeTicks")) # Ensure ticks exist
         total_seconds = total_ticks / 10_000_000 # Ticks are 100 nanoseconds
 
-        days, remainder_seconds = divmod(total_seconds, 86400) # 24*60*60
-        hours, remainder_seconds = divmod(remainder_seconds, 3600) # 60*60
+        days, remainder_seconds = divmod(total_seconds, 86400) # Seconds in a day
+        hours, remainder_seconds = divmod(remainder_seconds, 3600) # Seconds in an hour
         minutes, _ = divmod(remainder_seconds, 60)
 
-        # Find last watched item (more robustly)
+        # Find the last watched item
         last_watched_item = None
         if items:
-            # Filter items that have UserData and LastPlayedDate
+            # Filter items that have UserData and LastPlayedDate to ensure reliable sorting
             valid_items_for_last_played = [
                 item for item in items
                 if item.get("UserData") and item.get("UserData").get("LastPlayedDate")
@@ -98,7 +98,7 @@ class UtilityCog(commands.Cog):
     async def my_requests_cmd(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
 
-        linked_user = get_linked_user(str(interaction.user.id)) # Corrected: use interaction.user.id
+        linked_user = get_linked_user(str(interaction.user.id))
         if not linked_user or not linked_user[0]: # Check for linked user and jellyseerr_id
             await interaction.followup.send("⚠️ You need to link your account first using `/link`.", ephemeral=True)
             return
