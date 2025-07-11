@@ -1,3 +1,6 @@
 linked_users.db
 /__pycache__
 /cogs/__pycache__
+/build
+/dist
+jellyrequest.spec
