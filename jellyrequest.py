@@ -8,11 +8,11 @@ import utils
 
 # --- Configuration ---
 # These should ideally be loaded from environment variables or a config file for security
-JELLYSEERR_URL = os.getenv("JELLYSEERR_URL", "https://requests.demonbox.co")
-JELLYSEERR_API_KEY = os.getenv("JELLYSEERR_API_KEY", "MTc1MTI3MTE1NzE3OTNhZjRmYjMxLTEzYWUtNGMyNi04ZDMwLWIzNzNiMTI3MGY2OA==") # Example, replace
-DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN", "MTM5MzAwMDIxNjk2OTM1MTI1OA.Gwj_r5.wjr8Tg3YHG0_n6liXbHk1aTtKZgb61MEAP2qwU") # Replace with your actual token
-JELLYFIN_URL = os.getenv("JELLYFIN_URL", "https://tv.demonbox.co")
-JELLYFIN_API_KEY = os.getenv("JELLYFIN_API_KEY", "6b97626e804b4331b8dec89bfa3e9c10") # Example, replace
+JELLYSEERR_URL = os.getenv("JELLYSEERR_URL", "https://requests.example.com")
+JELLYSEERR_API_KEY = os.getenv("JELLYSEERR_API_KEY", "YOUR_JELLYSEERR_API_KEY") # Example, replace
+DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN", "YOUR_DISCORD_BOT_TOKEN") # Replace with your actual token
+JELLYFIN_URL = os.getenv("JELLYFIN_URL", "https://tv.example.com")
+JELLYFIN_API_KEY = os.getenv("JELLYFIN_API_KEY", "YOUR_JELLYFIN_API_KEY") # Example, replace
 # TMDB_IMAGE_BASE_URL is now in utils.py as it's used there
 
 # ---------------------
