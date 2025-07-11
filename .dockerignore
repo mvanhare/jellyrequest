@@ -1,0 +1,39 @@
+# Git files
+.git
+.gitignore
+.gitattributes
+
+# Python cache and compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# IDE and editor specific files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Docker files (prevents recursion if Dockerfile is in a subdirectory)
+Dockerfile
+.dockerignore
+
+# Database file (should be managed by a volume, not copied)
+linked_users.db
+*.db # General rule for any other dbs if they exist
+
+# Test files and reports (if any)
+tests/
+*.test
+*.cov
+htmlcov/
+
+# OS-specific files
+.DS_Store
+Thumbs.db

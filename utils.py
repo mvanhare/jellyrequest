@@ -2,13 +2,18 @@ import sqlite3
 import discord
 from discord.ui import View, Button, button
 import requests # Added for create_request_embed
+import os # For creating data directory
 
 # This was in jellyrequest.py, needed for create_embed_for_item and create_request_embed
 TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w500"
 
+DB_PATH = "data/linked_users.db"
+
 # --- Database Functions ---
 def init_db():
-    conn = sqlite3.connect("linked_users.db")
+    # Ensure the data directory exists
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS linked_users (
@@ -23,14 +28,14 @@ def init_db():
 
 def delete_linked_user(discord_id):
     """Delete a linked user from the database."""
-    conn = sqlite3.connect("linked_users.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('DELETE FROM linked_users WHERE discord_id=?', (str(discord_id),))
     conn.commit()
     conn.close()
 
 def store_linked_user(discord_id, jellyseerr_user_id, jellyfin_user_id, username=None):
-    conn = sqlite3.connect("linked_users.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('''
         INSERT INTO linked_users (discord_id, jellyseerr_user_id, jellyfin_user_id, username)
@@ -44,7 +49,7 @@ def store_linked_user(discord_id, jellyseerr_user_id, jellyfin_user_id, username
     conn.close()
 
 def get_linked_user(discord_id):
-    conn = sqlite3.connect("linked_users.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('''
         SELECT jellyseerr_user_id, jellyfin_user_id, username
