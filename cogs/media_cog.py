@@ -4,15 +4,11 @@ from discord import app_commands # Added for slash commands
 from urllib.parse import urlencode, quote
 import requests
 
-# Assuming utils.py is in the parent directory relative to cogs directory
-# For robust imports, especially if running the bot from the root directory:
-# from utils import create_embed_for_item, PaginationView
-# If running from a different working directory, sys.path manipulation or package structure might be needed.
-# For now, using a relative import path that should work if the bot is started from the root.
+# Ensure utils.py can be imported from the parent directory.
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from utils import create_embed_for_item, PaginationView, get_linked_user # Added get_linked_user
+from utils import create_embed_for_item, PaginationView, get_linked_user
 
 class MediaCommandsCog(commands.Cog):
     def __init__(self, bot, jellyseerr_url, jellyseerr_headers):
@@ -34,8 +30,6 @@ class MediaCommandsCog(commands.Cog):
             response.raise_for_status()
             data = response.json()
             results = data.get("results", [])
-
-            # print(f"Search results for '{query}': {results}") # Debugging line
 
             if not results:
                 await interaction.followup.send("No results found for your query.")
@@ -77,9 +71,6 @@ class MediaCommandsCog(commands.Cog):
                 await interaction.followup.send("No popular items found to discover.")
                 return
 
-            # Shuffle popular_items to provide variety if desired, or sort them
-            # For now, using as is.
-
             # Pass JELLYSEERR_URL and headers to the PaginationView
             view = PaginationView(popular_items, self.jellyseerr_url, self.jellyseerr_headers)
             initial_embed = create_embed_for_item(popular_items[0], 0, len(popular_items))
@@ -91,9 +82,9 @@ class MediaCommandsCog(commands.Cog):
             await interaction.followup.send(f"An unexpected error occurred during discovery: {e}")
 
 async def setup(bot):
-    # This function is called by discord.py when loading the cog
-    # We need to pass the JELLYSEERR_URL and JELLYSEERR_API_KEY (or headers) from the bot's config
-    # This assumes the main bot instance will have these attributes or a config dictionary
+    # This function is called by discord.py when loading the cog.
+    # It retrieves necessary configuration (JELLYSEERR_URL, JELLYSEERR_API_KEY)
+    # from the bot instance and initializes the cog.
     jellyseerr_url = getattr(bot, 'JELLYSEERR_URL', None)
     jellyseerr_api_key = getattr(bot, 'JELLYSEERR_API_KEY', None)
 

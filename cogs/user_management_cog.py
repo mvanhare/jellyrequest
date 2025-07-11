@@ -5,7 +5,7 @@ import requests
 import re
 import secrets
 
-# Adjust import path for utils
+# Ensure utils.py can be imported from the parent directory.
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -20,13 +20,13 @@ class UserManagementCog(commands.Cog):
         self.jellyfin_headers = jellyfin_headers
 
     @app_commands.command(name="invite", description="Adds a user to Jellyseerr and Jellyfin.")
-    @app_commands.checks.has_permissions(administrator=True) # Corrected decorator
+    @app_commands.checks.has_permissions(administrator=True)
     async def invite_cmd(self, interaction: discord.Interaction, user: discord.Member):
         await interaction.response.defer(ephemeral=True)
         username = re.sub(r"[^a-zA-Z0-9.-]", "", user.name) # Sanitize username
         temp_password = secrets.token_urlsafe(12)
 
-        # Step 1: Create Jellyfin User
+        # Create Jellyfin User
         jellyfin_user_id = None
         try:
             jellyfin_user_payload = {
@@ -53,7 +53,7 @@ class UserManagementCog(commands.Cog):
             await interaction.followup.send(err_msg, ephemeral=True)
             return
 
-        # Step 2: Import User to Jellyseerr
+        # Import User to Jellyseerr
         jellyseerr_user = None
         try:
             jellyseerr_import_url = f"{self.jellyseerr_url}/api/v1/user/import-from-jellyfin"
@@ -78,7 +78,7 @@ class UserManagementCog(commands.Cog):
             # Potentially roll back Jellyfin user creation or notify admin
             return
 
-        # Step 3: Store linked user (linking Discord ID to Jellyseerr ID and Jellyfin ID)
+        # Store linked user (linking Discord ID to Jellyseerr ID and Jellyfin ID)
         store_linked_user(
             discord_id=str(user.id),
             jellyseerr_user_id=str(jellyseerr_user.get("id")),
@@ -86,7 +86,7 @@ class UserManagementCog(commands.Cog):
             username=username
         )
 
-        # Step 4: DM Credentials to User
+        # DM Credentials to User
         try:
             dm_message = (
                 f"## Welcome to the Media Server! 🎉\n\n"
@@ -111,7 +111,7 @@ class UserManagementCog(commands.Cog):
     async def link_cmd(self, interaction: discord.Interaction, jellyfin_username: str, password: str):
         await interaction.response.defer(ephemeral=True)
 
-        # Step 1: Authenticate with Jellyfin
+        # Authenticate with Jellyfin
         jellyfin_user_id = None
         try:
             auth_payload = {"Username": jellyfin_username, "Pw": password}
@@ -133,11 +133,11 @@ class UserManagementCog(commands.Cog):
             await interaction.followup.send(f"❌ An error occurred while trying to authenticate with Jellyfin: {e}", ephemeral=True)
             return
 
-        # Step 2: Find the corresponding Jellyseerr user by Jellyfin User ID
+        # Find the corresponding Jellyseerr user by Jellyfin User ID
         jellyseerr_user_id_for_link = None
         jellyseerr_username = None # To store the username from Jellyseerr if found
         try:
-            seerr_users_url = f"{self.jellyseerr_url}/api/v1/user?take=1000" # Get many users
+            seerr_users_url = f"{self.jellyseerr_url}/api/v1/user?take=1000" # Get many users, default is 20
             seerr_response = requests.get(seerr_users_url, headers=self.jellyseerr_headers, timeout=10)
             seerr_response.raise_for_status()
             seerr_users = seerr_response.json().get("results", [])
@@ -162,24 +162,24 @@ class UserManagementCog(commands.Cog):
              await interaction.followup.send(f"❌ Could not determine Jellyseerr user ID for linking. Please contact an administrator.", ephemeral=True)
              return
 
-        # Step 3: Store the linked user in the database
+        # Store the linked user in the database
         store_linked_user(
-            discord_id=str(interaction.user.id), # Corrected: use interaction.user.id
+            discord_id=str(interaction.user.id),
             jellyseerr_user_id=str(jellyseerr_user_id_for_link),
-            jellyfin_user_id=str(jellyfin_user_id), # Storing this too for completeness
-            username=jellyseerr_username # Store the Jellyseerr username
+            jellyfin_user_id=str(jellyfin_user_id), # Storing this for completeness
+            username=jellyseerr_username
         )
         await interaction.followup.send(f"✅ **Success!** Your Discord account is now linked to the Jellyfin/Jellyseerr user '{jellyseerr_username}'.", ephemeral=True)
 
     @app_commands.command(name="unlink", description="Unlink your Discord account from Jellyseerr/Jellyfin")
     async def unlink_cmd(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
-        linked_user = get_linked_user(str(interaction.user.id)) # Corrected: use interaction.user.id
+        linked_user = get_linked_user(str(interaction.user.id))
         if not linked_user:
             await interaction.followup.send("⚠️ You haven't linked your account yet.", ephemeral=True)
             return
 
-        delete_linked_user(str(interaction.user.id)) # Corrected: use interaction.user.id
+        delete_linked_user(str(interaction.user.id))
         await interaction.followup.send("✅ Unlinked your Discord account successfully.", ephemeral=True)
 
 
