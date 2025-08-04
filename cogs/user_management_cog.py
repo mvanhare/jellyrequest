@@ -1,15 +1,16 @@
 import discord
-from discord.ext import commands
-from discord import app_commands # Added for slash commands
+from discord.ext import commands, tasks
+from discord import app_commands
 import requests
 import re
 import secrets
+from datetime import datetime, timedelta
 
 # Ensure utils.py can be imported from the parent directory.
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from utils import store_linked_user, get_linked_user, delete_linked_user
+from utils import store_linked_user, get_linked_user, delete_linked_user, get_all_expiring_users
 
 class UserManagementCog(commands.Cog):
     def __init__(self, bot, jellyseerr_url, jellyseerr_headers, jellyfin_url, jellyfin_headers):
@@ -18,16 +19,57 @@ class UserManagementCog(commands.Cog):
         self.jellyseerr_headers = jellyseerr_headers
         self.jellyfin_url = jellyfin_url
         self.jellyfin_headers = jellyfin_headers
+        self.check_expired_users.start()
 
-    @app_commands.command(name="invite", description="Adds a user to Jellyseerr and Jellyfin.")
-    @app_commands.checks.has_permissions(administrator=True)
-    async def invite_cmd(self, interaction: discord.Interaction, user: discord.Member):
+    def cog_unload(self):
+        self.check_expired_users.cancel()
+
+    @tasks.loop(hours=24)
+    async def check_expired_users(self):
+        now = datetime.utcnow()
+        expiring_users = get_all_expiring_users()
+        for user_row in expiring_users:
+            discord_id, jellyfin_user_id, expires_at_str = user_row
+            expires_at = datetime.fromisoformat(expires_at_str)
+
+            if now >= expires_at:
+                try:
+                    # Disable in Jellyfin by updating policy
+                    policy_url = f"{self.jellyfin_url}/Users/{jellyfin_user_id}/Policy"
+                    response = requests.get(policy_url, headers=self.jellyfin_headers, timeout=10)
+                    response.raise_for_status()
+                    policy = response.json()
+                    policy['EnableMediaPlayback'] = False
+
+                    requests.post(policy_url, headers=self.jellyfin_headers, json=policy, timeout=10).raise_for_status()
+
+                    # Notify user and cleanup
+                    user = await self.bot.fetch_user(int(discord_id))
+                    if user:
+                        await user.send("Your temporary access to the media server has expired.")
+
+                    delete_linked_user(discord_id)
+                    print(f"Disabled and unlinked expired user: {discord_id}")
+
+                except requests.exceptions.RequestException as e:
+                    print(f"Failed to disable expired user {discord_id} in Jellyfin: {e}")
+                except discord.NotFound:
+                    print(f"Could not find Discord user {discord_id} to notify of expiration.")
+                    delete_linked_user(discord_id) # still unlink them
+                except Exception as e:
+                    print(f"An unexpected error occurred while processing expiration for user {discord_id}: {e}")
+
+    @check_expired_users.before_loop
+    async def before_check_expired_users(self):
+        await self.bot.wait_until_ready()
+
+    async def _create_user(self, interaction: discord.Interaction, user: discord.Member, duration_days: int = None):
+        """A helper function to create a user in Jellyfin and Jellyseerr, with an optional expiration."""
         await interaction.response.defer(ephemeral=True)
-        username = re.sub(r"[^a-zA-Z0-9.-]", "", user.name) # Sanitize username
+        username = re.sub(r"[^a-zA-Z0-9.-]", "", user.name)
         temp_password = secrets.token_urlsafe(12)
 
         # Create Jellyfin User
-        jellyfin_user_id = None
         try:
             jellyfin_user_payload = {
                 "Name": username, "Password": temp_password,
@@ -35,58 +77,37 @@ class UserManagementCog(commands.Cog):
                             "EnableMediaPlayback": True, "EnableLiveTvAccess": False,
                             "EnableLiveTvManagement": False }
             }
-            jellyfin_new_user_url = f"{self.jellyfin_url}/Users/New"
-            response_fin = requests.post(jellyfin_new_user_url, headers=self.jellyfin_headers, json=jellyfin_user_payload, timeout=10)
-
+            response_fin = requests.post(f"{self.jellyfin_url}/Users/New", headers=self.jellyfin_headers, json=jellyfin_user_payload, timeout=10)
             if response_fin.status_code == 400 and "User with the same name already exists" in response_fin.text:
-                 await interaction.followup.send(f"⚠️ User '{username}' already exists in Jellyfin. Cannot proceed.", ephemeral=True)
-                 return
+                await interaction.followup.send(f"⚠️ User '{username}' already exists in Jellyfin.", ephemeral=True)
+                return
             response_fin.raise_for_status()
             jellyfin_user_id = response_fin.json().get("Id")
-            if not jellyfin_user_id:
-                await interaction.followup.send("❌ Failed to get user ID from Jellyfin response after creation.", ephemeral=True)
-                return
         except requests.exceptions.RequestException as e:
-            err_msg = f"❌ Failed to create Jellyfin user: {e}"
-            if e.response is not None:
-                err_msg += f" - {e.response.text}"
-            await interaction.followup.send(err_msg, ephemeral=True)
+            await interaction.followup.send(f"❌ Failed to create Jellyfin user: {e}", ephemeral=True)
             return
 
         # Import User to Jellyseerr
-        jellyseerr_user = None
         try:
-            jellyseerr_import_url = f"{self.jellyseerr_url}/api/v1/user/import-from-jellyfin"
-            response_seerr_import = requests.post(
-                jellyseerr_import_url, headers=self.jellyseerr_headers,
-                json={"jellyfinUserIds": [jellyfin_user_id]}, timeout=10
-            )
+            response_seerr_import = requests.post(f"{self.jellyseerr_url}/api/v1/user/import-from-jellyfin",
+                                                 headers=self.jellyseerr_headers, json={"jellyfinUserIds": [jellyfin_user_id]}, timeout=10)
             response_seerr_import.raise_for_status()
-            created_users = response_seerr_import.json()
-            if not created_users or not isinstance(created_users, list) or len(created_users) == 0:
-                await interaction.followup.send("❌ User created in Jellyfin but import to Jellyseerr returned unexpected data.", ephemeral=True)
-                return
-            jellyseerr_user = created_users[0]
-            if not jellyseerr_user or not jellyseerr_user.get("id"):
-                 await interaction.followup.send("❌ User created in Jellyfin but import to Jellyseerr failed to provide a user ID.", ephemeral=True)
-                 return
+            jellyseerr_user = response_seerr_import.json()[0]
         except requests.exceptions.RequestException as e:
-            err_msg = f"❌ Failed to import Jellyfin user to Jellyseerr: {e}"
-            if e.response is not None:
-                err_msg += f" - {e.response.text}"
-            await interaction.followup.send(err_msg, ephemeral=True)
-            # Potentially roll back Jellyfin user creation or notify admin
+            await interaction.followup.send(f"❌ Failed to import to Jellyseerr: {e}", ephemeral=True)
             return
 
-        # Store linked user (linking Discord ID to Jellyseerr ID and Jellyfin ID)
+        # Store linked user
+        expires_at = datetime.utcnow() + timedelta(days=duration_days) if duration_days else None
         store_linked_user(
             discord_id=str(user.id),
             jellyseerr_user_id=str(jellyseerr_user.get("id")),
             jellyfin_user_id=str(jellyfin_user_id),
-            username=username
+            username=username,
+            expires_at=expires_at.isoformat() if expires_at else None
         )
 
-        # DM Credentials to User
+        # DM Credentials
         try:
             dm_message = (
                 f"## Welcome to the Media Server! 🎉\n\n"
@@ -95,17 +116,32 @@ class UserManagementCog(commands.Cog):
                 f"**Temporary Password:** `{temp_password}`\n\n"
                 f"Please change your password after logging in.\n\n"
                 f"🔗 Jellyfin: {self.jellyfin_url}\n"
-                f"🔗 Jellyseerr: {self.jellyseerr_url}"
+                f"🔗 Jellyseerr: {self.jellyseerr_url}\n\n"
             )
-            await user.send(dm_message)
-        except discord.Forbidden:
-            await interaction.followup.send(f"✅ Accounts created for {username}, but I could not DM them. Please send their password manually: `{temp_password}`", ephemeral=True)
-            return
-        except Exception as e: # Catch other potential errors during DM
-            await interaction.followup.send(f"✅ Accounts created for {username}, but failed to DM them. Password: `{temp_password}`. Error: {e}", ephemeral=True)
-            return
+            if duration_days:
+                dm_message += f"**Note:** This is a temporary account that will expire in {duration_days} days."
 
-        await interaction.followup.send(f"✅ Successfully created accounts for `{username}` and sent them a DM with credentials.", ephemeral=True)
+            await user.send(dm_message)
+            await interaction.followup.send(f"✅ Successfully created account for `{username}` and sent them a DM.", ephemeral=True)
+        except discord.Forbidden:
+            await interaction.followup.send(f"✅ Account for {username} created, but I could not DM them. Password: `{temp_password}`", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"✅ Account for {username} created, but failed to DM. Password: `{temp_password}`. Error: {e}", ephemeral=True)
+
+    @app_commands.command(name="invite", description="Adds a permanent user to Jellyseerr and Jellyfin.")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def invite_cmd(self, interaction: discord.Interaction, user: discord.Member):
+        await self._create_user(interaction, user, duration_days=None)
+
+    @app_commands.command(name="trial", description="Adds a trial user for 7 days.")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def trial_cmd(self, interaction: discord.Interaction, user: discord.Member):
+        await self._create_user(interaction, user, duration_days=7)
+
+    @app_commands.command(name="vip", description="Adds a VIP user for 30 days.")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def vip_cmd(self, interaction: discord.Interaction, user: discord.Member):
+        await self._create_user(interaction, user, duration_days=30)
 
     @app_commands.command(name="link", description="Link your Discord account to your Jellyfin/Jellyseerr user")
     async def link_cmd(self, interaction: discord.Interaction, jellyfin_username: str, password: str):
