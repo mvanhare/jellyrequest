@@ -11,7 +11,7 @@ DB_PATH = "data/linked_users.db"
 # --- Database Functions ---
 def init_db():
     """Initializes the SQLite database and creates the linked_users table if it doesn't exist."""
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True) # Ensure data directory exists
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('''
@@ -19,9 +19,20 @@ def init_db():
             discord_id TEXT PRIMARY KEY,
             jellyseerr_user_id TEXT,
             jellyfin_user_id TEXT,
-            username TEXT
+            username TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            expires_at DATETIME
         )
     ''')
+    # Add expires_at column if it doesn't exist for backward compatibility
+    try:
+        cursor.execute('ALTER TABLE linked_users ADD COLUMN expires_at DATETIME')
+    except sqlite3.OperationalError:
+        pass # Column already exists
+    try:
+        cursor.execute('ALTER TABLE linked_users ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP')
+    except sqlite3.OperationalError:
+        pass # Column already exists
     conn.commit()
     conn.close()
 
@@ -33,17 +44,18 @@ def delete_linked_user(discord_id: str):
     conn.commit()
     conn.close()
 
-def store_linked_user(discord_id, jellyseerr_user_id, jellyfin_user_id, username=None):
+def store_linked_user(discord_id, jellyseerr_user_id, jellyfin_user_id, username=None, expires_at=None):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('''
-        INSERT INTO linked_users (discord_id, jellyseerr_user_id, jellyfin_user_id, username)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO linked_users (discord_id, jellyseerr_user_id, jellyfin_user_id, username, expires_at)
+        VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(discord_id) DO UPDATE SET
             jellyseerr_user_id=excluded.jellyseerr_user_id,
             jellyfin_user_id=excluded.jellyfin_user_id,
-            username=excluded.username
-    ''', (str(discord_id), jellyseerr_user_id, jellyfin_user_id, username))
+            username=excluded.username,
+            expires_at=excluded.expires_at
+    ''', (str(discord_id), jellyseerr_user_id, jellyfin_user_id, username, expires_at))
     conn.commit()
     conn.close()
 
@@ -51,13 +63,23 @@ def get_linked_user(discord_id: str):
     """Retrieves a linked user's details from the database by their Discord ID."""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
+    # Also retrieve expires_at
     cursor.execute('''
-        SELECT jellyseerr_user_id, jellyfin_user_id, username
+        SELECT jellyseerr_user_id, jellyfin_user_id, username, expires_at
         FROM linked_users WHERE discord_id=?
     ''', (str(discord_id),))
     result = cursor.fetchone()
     conn.close()
-    return result  # Returns (jellyseerr_id, jellyfin_id, username) or None
+    return result
+
+def get_all_expiring_users():
+    """Retrieves all users with an expiration date."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('SELECT discord_id, jellyfin_user_id, expires_at FROM linked_users WHERE expires_at IS NOT NULL')
+    results = cursor.fetchall()
+    conn.close()
+    return results
 
 # --- Embed Creation Helpers ---
 def create_embed_for_item(item: dict, current_index: int, total_results: int) -> discord.Embed:
