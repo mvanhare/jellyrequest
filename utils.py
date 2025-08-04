@@ -33,6 +33,15 @@ def init_db():
         cursor.execute('ALTER TABLE linked_users ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP')
     except sqlite3.OperationalError:
         pass # Column already exists
+    # Add guild_id and role_name for role management on expiration
+    try:
+        cursor.execute('ALTER TABLE linked_users ADD COLUMN guild_id TEXT')
+    except sqlite3.OperationalError:
+        pass # Column already exists
+    try:
+        cursor.execute('ALTER TABLE linked_users ADD COLUMN role_name TEXT')
+    except sqlite3.OperationalError:
+        pass # Column already exists
     conn.commit()
     conn.close()
 
@@ -44,18 +53,20 @@ def delete_linked_user(discord_id: str):
     conn.commit()
     conn.close()
 
-def store_linked_user(discord_id, jellyseerr_user_id, jellyfin_user_id, username=None, expires_at=None):
+def store_linked_user(discord_id, jellyseerr_user_id, jellyfin_user_id, username=None, expires_at=None, guild_id=None, role_name=None):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('''
-        INSERT INTO linked_users (discord_id, jellyseerr_user_id, jellyfin_user_id, username, expires_at)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO linked_users (discord_id, jellyseerr_user_id, jellyfin_user_id, username, expires_at, guild_id, role_name)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(discord_id) DO UPDATE SET
             jellyseerr_user_id=excluded.jellyseerr_user_id,
             jellyfin_user_id=excluded.jellyfin_user_id,
             username=excluded.username,
-            expires_at=excluded.expires_at
-    ''', (str(discord_id), jellyseerr_user_id, jellyfin_user_id, username, expires_at))
+            expires_at=excluded.expires_at,
+            guild_id=excluded.guild_id,
+            role_name=excluded.role_name
+    ''', (str(discord_id), jellyseerr_user_id, jellyfin_user_id, username, expires_at, guild_id, role_name))
     conn.commit()
     conn.close()
 
@@ -76,7 +87,7 @@ def get_all_expiring_users():
     """Retrieves all users with an expiration date."""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute('SELECT discord_id, jellyfin_user_id, expires_at FROM linked_users WHERE expires_at IS NOT NULL')
+    cursor.execute('SELECT discord_id, jellyfin_user_id, expires_at, guild_id, role_name FROM linked_users WHERE expires_at IS NOT NULL')
     results = cursor.fetchall()
     conn.close()
     return results
