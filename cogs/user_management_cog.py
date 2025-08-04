@@ -29,33 +29,61 @@ class UserManagementCog(commands.Cog):
         now = datetime.utcnow()
         expiring_users = get_all_expiring_users()
         for user_row in expiring_users:
-            discord_id, jellyfin_user_id, expires_at_str = user_row
+            # Unpack with None defaults for backward compatibility
+            discord_id, jellyfin_user_id, expires_at_str, guild_id, role_name = (*user_row, None, None)[:5]
+
+            if not expires_at_str:
+                continue
             expires_at = datetime.fromisoformat(expires_at_str)
 
             if now >= expires_at:
                 try:
-                    # Disable in Jellyfin by updating policy
+                    # --- Role Removal ---
+                    if guild_id and role_name:
+                        try:
+                            guild = self.bot.get_guild(int(guild_id))
+                            if guild:
+                                role = discord.utils.get(guild.roles, name=role_name)
+                                if role:
+                                    member = await guild.fetch_member(int(discord_id))
+                                    if member:
+                                        await member.remove_roles(role)
+                                        print(f"Removed role '{role_name}' from user {discord_id}.")
+                                else:
+                                    print(f"Role '{role_name}' not found in guild {guild_id} for user {discord_id}.")
+                            else:
+                                print(f"Guild {guild_id} not found for user {discord_id}.")
+                        except discord.Forbidden:
+                            print(f"Bot lacks permissions to remove role '{role_name}' for user {discord_id} in guild {guild_id}.")
+                        except discord.NotFound:
+                             print(f"Member {discord_id} not found in guild {guild_id} for role removal.")
+                        except Exception as e:
+                            print(f"An error occurred during role removal for {discord_id}: {e}")
+
+
+                    # --- Disable in Jellyfin ---
                     policy_url = f"{self.jellyfin_url}/Users/{jellyfin_user_id}/Policy"
                     response = requests.get(policy_url, headers=self.jellyfin_headers, timeout=10)
                     response.raise_for_status()
                     policy = response.json()
                     policy['EnableMediaPlayback'] = False
-
                     requests.post(policy_url, headers=self.jellyfin_headers, json=policy, timeout=10).raise_for_status()
+                    print(f"Disabled Jellyfin access for expired user: {discord_id}")
 
-                    # Notify user and cleanup
-                    user = await self.bot.fetch_user(int(discord_id))
-                    if user:
-                        await user.send("Your temporary access to the media server has expired.")
+                    # --- Notify user and cleanup DB ---
+                    try:
+                        user = await self.bot.fetch_user(int(discord_id))
+                        await user.send("Your temporary access to the media server has expired, and any associated roles have been removed.")
+                    except discord.NotFound:
+                        print(f"Could not find Discord user {discord_id} to notify of expiration.")
+                    except discord.Forbidden:
+                        print(f"Could not DM user {discord_id} about expiration.")
 
                     delete_linked_user(discord_id)
-                    print(f"Disabled and unlinked expired user: {discord_id}")
+                    print(f"Unlinked expired user: {discord_id}")
 
                 except requests.exceptions.RequestException as e:
                     print(f"Failed to disable expired user {discord_id} in Jellyfin: {e}")
-                except discord.NotFound:
-                    print(f"Could not find Discord user {discord_id} to notify of expiration.")
-                    delete_linked_user(discord_id) # still unlink them
                 except Exception as e:
                     print(f"An unexpected error occurred while processing expiration for user {discord_id}: {e}")
 
@@ -63,7 +91,7 @@ class UserManagementCog(commands.Cog):
     async def before_check_expired_users(self):
         await self.bot.wait_until_ready()
 
-    async def _create_user(self, interaction: discord.Interaction, user: discord.Member, duration_days: int = None):
+    async def _create_user(self, interaction: discord.Interaction, user: discord.Member, duration_days: int = None, role_name_to_assign: str = None):
         """A helper function to create a user in Jellyfin and Jellyseerr, with an optional expiration."""
         await interaction.response.defer(ephemeral=True)
         username = re.sub(r"[^a-zA-Z0-9.-]", "", user.name)
@@ -97,6 +125,21 @@ class UserManagementCog(commands.Cog):
             await interaction.followup.send(f"❌ Failed to import to Jellyseerr: {e}", ephemeral=True)
             return
 
+        # Assign role if specified
+        if role_name_to_assign:
+            role = discord.utils.get(interaction.guild.roles, name=role_name_to_assign)
+            if role:
+                try:
+                    await user.add_roles(role)
+                except discord.Forbidden:
+                    # Can't add role, but continue with user creation. Notify in the final message.
+                    print(f"Failed to assign role '{role_name_to_assign}' to {user.name}: Bot is missing permissions.")
+                except Exception as e:
+                    print(f"An unexpected error occurred while assigning role '{role_name_to_assign}' to {user.name}: {e}")
+            else:
+                print(f"Role '{role_name_to_assign}' not found in guild '{interaction.guild.name}'.")
+
+
         # Store linked user
         expires_at = datetime.utcnow() + timedelta(days=duration_days) if duration_days else None
         store_linked_user(
@@ -104,7 +147,9 @@ class UserManagementCog(commands.Cog):
             jellyseerr_user_id=str(jellyseerr_user.get("id")),
             jellyfin_user_id=str(jellyfin_user_id),
             username=username,
-            expires_at=expires_at.isoformat() if expires_at else None
+            expires_at=expires_at.isoformat() if expires_at else None,
+            guild_id=str(interaction.guild.id) if role_name_to_assign else None,
+            role_name=role_name_to_assign
         )
 
         # DM Credentials
@@ -136,12 +181,12 @@ class UserManagementCog(commands.Cog):
     @app_commands.command(name="trial", description="Adds a trial user for 7 days.")
     @app_commands.checks.has_permissions(administrator=True)
     async def trial_cmd(self, interaction: discord.Interaction, user: discord.Member):
-        await self._create_user(interaction, user, duration_days=7)
+        await self._create_user(interaction, user, duration_days=7, role_name_to_assign="Trial")
 
     @app_commands.command(name="vip", description="Adds a VIP user for 30 days.")
     @app_commands.checks.has_permissions(administrator=True)
     async def vip_cmd(self, interaction: discord.Interaction, user: discord.Member):
-        await self._create_user(interaction, user, duration_days=30)
+        await self._create_user(interaction, user, duration_days=30, role_name_to_assign="VIP")
 
     @app_commands.command(name="link", description="Link your Discord account to your Jellyfin/Jellyseerr user")
     async def link_cmd(self, interaction: discord.Interaction, jellyfin_username: str, password: str):
